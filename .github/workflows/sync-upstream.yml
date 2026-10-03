@@ -4,6 +4,11 @@ name: Sync with upstream
 # repository's main and redeploys the web app, so the fork keeps up without
 # anyone doing it by hand. Does nothing when already up to date.
 #
+# Upstream labels its pull requests; one labeled "feature" is expected to add
+# its entry to lib/core/app_features.dart so it shows up (switched off) in
+# this fork's Feature hub. If a merged feature PR didn't, an issue is opened
+# here so the switch can be added by hand.
+#
 # The job fails (GitHub emails the owner) and leaves main untouched when:
 # - the merge conflicts with changes made here, or
 # - upstream changed a file under .github/workflows/, which the workflow
@@ -17,6 +22,7 @@ on:
 permissions:
   contents: write
   actions: write
+  issues: write
 
 concurrency:
   group: sync-upstream
@@ -27,6 +33,8 @@ jobs:
     if: github.repository != 'DanielDaCool/nutrition-app'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      UPSTREAM: DanielDaCool/nutrition-app
     steps:
       - uses: actions/checkout@v5
         with:
@@ -38,13 +46,17 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch https://github.com/DanielDaCool/nutrition-app.git main
+          git fetch "https://github.com/$UPSTREAM.git" main
           if git merge-base --is-ancestor FETCH_HEAD HEAD; then
             echo "Already up to date with upstream."
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          git merge --no-edit -m "Merge DanielDaCool/nutrition-app main" FETCH_HEAD
+          # Numbers of the upstream pull requests this sync brings in.
+          git log --reverse --merges --format=%s HEAD..FETCH_HEAD |
+            grep -oE '^Merge pull request #[0-9]+' |
+            grep -oE '[0-9]+$' > "$RUNNER_TEMP/new-prs.txt" || true
+          git merge --no-edit -m "Merge $UPSTREAM main" FETCH_HEAD
           git push origin main
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
@@ -55,3 +67,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run web.yml --repo "$GITHUB_REPOSITORY" --ref main
+
+      - name: Flag feature PRs that have no Feature hub entry
+        if: steps.merge.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          while read -r pr; do
+            [ -n "$pr" ] || continue
+            if ! gh api "repos/$UPSTREAM/pulls/$pr" --jq '.labels[].name' | grep -qx 'feature'; then
+              continue
+            fi
+            if gh api --paginate "repos/$UPSTREAM/pulls/$pr/files" --jq '.[].filename' | grep -qx 'lib/core/app_features.dart'; then
+              echo "Feature PR #$pr registered a Feature hub entry."
+              continue
+            fi
+            title=$(gh api "repos/$UPSTREAM/pulls/$pr" --jq '.title')
+            echo "::warning::Feature PR #$pr has no Feature hub entry: $title"
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "Upstream feature #$pr has no Feature hub switch: $title" --body "The daily sync merged https://github.com/$UPSTREAM/pull/$pr (labeled feature), but it did not add an entry to lib/core/app_features.dart. The feature is active in this fork with no switch. Add an AppFeature value and gate its UI to make it switchable in the Feature hub."
+          done < "$RUNNER_TEMP/new-prs.txt"
