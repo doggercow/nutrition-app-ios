@@ -53,7 +53,7 @@ class FeatureHub extends ConsumerWidget {
               key: Key('feature-${feature.storageKey}'),
               title: Text(feature.label),
               subtitle: Text(feature.description),
-              value: flags[feature] ?? feature.defaultEnabled,
+              value: flags[feature] ?? featureDefault(feature),
               onChanged: (v) => _set(context, ref, feature, v),
             )
           else

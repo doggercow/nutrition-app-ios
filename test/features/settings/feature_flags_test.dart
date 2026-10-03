@@ -57,11 +57,13 @@ void main() {
     ProviderContainer container({
       bool isWeb = false,
       Map<AppFeature, bool>? initial,
+      bool hub = true,
     }) {
       final c = ProviderContainer(
         overrides: [
           databaseProvider.overrideWithValue(db),
           isWebProvider.overrideWithValue(isWeb),
+          if (hub) hubFeatureGateOverride,
           if (initial != null)
             initialFeatureFlagsProvider.overrideWithValue(initial),
         ],
@@ -70,10 +72,53 @@ void main() {
       return c;
     }
 
-    test('every feature is on by default', () {
+    test('the features from before the hub are on by default', () {
       final c = container();
+      for (final f in featuresOnByDefault) {
+        expect(featureDefault(f), isTrue, reason: f.name);
+        expect(c.read(featureEnabledProvider(f)), isTrue, reason: f.name);
+      }
+      expect(featuresOnByDefault, {
+        AppFeature.activity,
+        AppFeature.recipes,
+        AppFeature.yesterdayPrompt,
+        AppFeature.barcodeScan,
+      });
+    });
+
+    test('a newer feature is off until the user switches it on', () async {
+      final c = container();
+      expect(featureDefault(AppFeature.gainGoals), isFalse);
+      expect(c.read(featureEnabledProvider(AppFeature.gainGoals)), isFalse);
+
+      await c
+          .read(featureFlagsProvider.notifier)
+          .setEnabled(AppFeature.gainGoals, true);
+      expect(c.read(featureEnabledProvider(AppFeature.gainGoals)), isTrue);
+      expect(await loadFeatureFlags(db), {AppFeature.gainGoals: true});
+    });
+
+    test('without the hub override every available feature is on', () async {
+      final c = container(
+        hub: false,
+        initial: {AppFeature.recipes: false},
+      );
       for (final f in AppFeature.values) {
         expect(c.read(featureEnabledProvider(f)), isTrue, reason: f.name);
+      }
+      // Stored switches don't reach the plain shared gate.
+      await c
+          .read(featureFlagsProvider.notifier)
+          .setEnabled(AppFeature.barcodeScan, false);
+      expect(c.read(featureEnabledProvider(AppFeature.barcodeScan)), isTrue);
+
+      final web = container(hub: false, isWeb: true);
+      for (final f in AppFeature.values) {
+        expect(
+          web.read(featureEnabledProvider(f)),
+          !f.androidOnly,
+          reason: f.name,
+        );
       }
     });
 

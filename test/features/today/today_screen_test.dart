@@ -11,7 +11,6 @@ import 'package:nutrition_app/features/dashboard/dashboard_providers.dart';
 import 'package:nutrition_app/features/food/data/food_repository.dart';
 import 'package:nutrition_app/features/food/food_providers.dart';
 import 'package:nutrition_app/features/food/widgets/meals_section.dart';
-import 'package:nutrition_app/features/settings/feature_flags.dart';
 import 'package:nutrition_app/features/targets/targets_providers.dart';
 import 'package:nutrition_app/features/today/today_screen.dart';
 import 'package:nutrition_app/features/today/widgets/yesterday_prompt.dart';
@@ -515,9 +514,9 @@ void main() {
     await pumpToday(
       tester,
       extra: [
-        initialFeatureFlagsProvider.overrideWithValue(const {
-          AppFeature.activity: false,
-        }),
+        featureEnabledProvider.overrideWith(
+          (ref, f) => f != AppFeature.activity,
+        ),
       ],
     );
     expect(find.byType(ActivityCard), findsNothing);
@@ -548,9 +547,9 @@ void main() {
       targets: targets,
       intakeFor: intake,
       extra: [
-        initialFeatureFlagsProvider.overrideWithValue(const {
-          AppFeature.yesterdayPrompt: false,
-        }),
+        featureEnabledProvider.overrideWith(
+          (ref, f) => f != AppFeature.yesterdayPrompt,
+        ),
       ],
     );
     expect(find.byType(YesterdayPrompt), findsNothing);

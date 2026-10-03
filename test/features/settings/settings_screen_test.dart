@@ -10,7 +10,6 @@ import 'package:nutrition_app/features/activity/widgets/health_connect_tile.dart
 import 'package:nutrition_app/features/activity/widgets/step_goal_tile.dart';
 import 'package:nutrition_app/features/activity/widgets/walk_reminder_tile.dart';
 import 'package:nutrition_app/features/settings/data_export.dart';
-import 'package:nutrition_app/features/settings/feature_flags.dart';
 import 'package:nutrition_app/features/settings/settings_screen.dart';
 
 import '../../helpers/test_db.dart';
@@ -556,9 +555,9 @@ void main() {
         overrides: [
           databaseProvider.overrideWithValue(db),
           clockProvider.overrideWithValue(() => now),
-          initialFeatureFlagsProvider.overrideWithValue(const {
-            AppFeature.gainGoals: false,
-          }),
+          featureEnabledProvider.overrideWith(
+            (ref, f) => f != AppFeature.gainGoals,
+          ),
         ],
         child: const MaterialApp(home: SettingsScreen()),
       ),

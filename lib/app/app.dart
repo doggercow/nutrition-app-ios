@@ -12,7 +12,6 @@ import '../features/activity/activity_providers.dart';
 import '../features/dashboard/dashboard_providers.dart';
 import '../features/dashboard/dashboard_screen.dart';
 import '../features/recipes/recipes_screen.dart';
-import '../features/settings/feature_flags.dart';
 import '../features/settings/settings_screen.dart';
 import '../features/settings/setup_screen.dart';
 import '../features/targets/targets_providers.dart';
@@ -44,7 +43,7 @@ class NutritionApp extends StatelessWidget {
 /// whenever the app returns to the foreground, opens the "Get started" setup
 /// once per app start while there is no profile, badges Settings when a
 /// check-in is due, and jumps Today back to today when its tab is re-tapped.
-/// The Recipes tab is left out while it is switched off in the Feature hub.
+/// The Recipes tab is left out while its feature gate is off.
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
@@ -53,7 +52,7 @@ class HomeShell extends ConsumerStatefulWidget {
 }
 
 /// The top-level tabs. The selection is tracked by tab, not by position, so
-/// it stays put when a tab is switched off.
+/// it stays put when a tab's feature gate goes off.
 enum _Tab { today, weight, dashboard, recipes, settings }
 
 class _HomeShellState extends ConsumerState<HomeShell>
@@ -186,7 +185,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
       for (final t in _Tab.values)
         if (t != _Tab.recipes || showRecipes) t,
     ];
-    // The selected tab was switched off: fall back to Today for good, so it
+    // The selected tab's gate went off: fall back to Today for good, so it
     // doesn't jump back when the tab returns.
     if (!tabs.contains(_tab)) _tab = _Tab.today;
     final index = tabs.indexOf(_tab);

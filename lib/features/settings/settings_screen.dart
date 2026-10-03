@@ -22,7 +22,6 @@ import '../targets/targets_providers.dart';
 import '../weight/weight_providers.dart';
 import 'data_export.dart';
 import 'error_retry.dart';
-import 'feature_flags.dart';
 import 'feature_hub.dart';
 
 /// The Settings tab of the home shell: "Personal details" (targets, check-in,

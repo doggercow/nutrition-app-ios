@@ -1,9 +1,11 @@
 // OWNER: engine agent (A).
-// Feature flags: which AppFeatures the user switched off on this device.
+// Feature flags: which AppFeatures the user switched on or off on this
+// device, and the override that connects them to the shared feature gate.
 // Stored in KeyValues under `feature.<storageKey>` ('1' on, '0' off).
 
 import 'package:drift/drift.dart' show StringExpressionOperators;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 
 import '../../app/providers.dart';
 import '../../core/app_features.dart';
@@ -11,9 +13,22 @@ import '../../data/db/database.dart';
 
 const _prefix = 'feature.';
 
+/// The features that existed when the Feature hub was introduced. Every
+/// other feature (i.e. anything new that arrives from upstream) starts
+/// switched OFF until the user turns it on.
+const Set<AppFeature> featuresOnByDefault = {
+  AppFeature.activity,
+  AppFeature.recipes,
+  AppFeature.yesterdayPrompt,
+  AppFeature.barcodeScan,
+};
+
+/// Whether [f] is on until the user chooses otherwise.
+bool featureDefault(AppFeature f) => featuresOnByDefault.contains(f);
+
 /// Loads the stored on/off choices. A feature the user never touched is not
-/// in the map (it counts as on); keys of features this build doesn't know
-/// are ignored.
+/// in the map (it follows [featureDefault]); keys of features this build
+/// doesn't know are ignored.
 Future<Map<AppFeature, bool>> loadFeatureFlags(AppDatabase db) async {
   final rows = await (db.select(
     db.keyValues,
@@ -47,13 +62,13 @@ Future<void> saveFeatureFlag(
 
 /// The flags as stored when the app started. Overridden in main() with the
 /// values loaded before `runApp`, so nothing the user switched off flashes
-/// on screen at startup. Not overridden (tests): everything is on.
+/// on screen at startup. Not overridden (tests): no stored choices.
 final initialFeatureFlagsProvider = Provider<Map<AppFeature, bool>>(
   (ref) => const {},
 );
 
-/// The user's on/off choices; a feature missing from the map follows its
-/// [AppFeature.defaultEnabled].
+/// The user's on/off choices; a feature missing from the map follows
+/// [featureDefault].
 final featureFlagsProvider =
     NotifierProvider<FeatureFlags, Map<AppFeature, bool>>(FeatureFlags.new);
 
@@ -83,10 +98,12 @@ class FeatureFlags extends Notifier<Map<AppFeature, bool>> {
   }
 }
 
-/// Whether [AppFeature]'s UI should show: it exists on this platform and the
-/// user hasn't switched it off.
-final featureEnabledProvider = Provider.family<bool, AppFeature>(
+/// Connects the shared [featureEnabledProvider] gate to the stored switches:
+/// a feature shows when it exists on this platform and is switched on (the
+/// user's choice, else [featureDefault]). Added to the ProviderScope in
+/// main(); without it every available feature is on.
+final Override hubFeatureGateOverride = featureEnabledProvider.overrideWith(
   (ref, feature) =>
       feature.availableOn(isWeb: ref.watch(isWebProvider)) &&
-      (ref.watch(featureFlagsProvider)[feature] ?? feature.defaultEnabled),
+      (ref.watch(featureFlagsProvider)[feature] ?? featureDefault(feature)),
 );

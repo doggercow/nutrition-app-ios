@@ -2,14 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:nutrition_app/app/app.dart';
 import 'package:nutrition_app/app/providers.dart';
 import 'package:nutrition_app/core/app_features.dart';
 import 'package:nutrition_app/data/db/database.dart';
+import 'package:nutrition_app/domain/models.dart';
+import 'package:nutrition_app/features/activity/activity_providers.dart';
 import 'package:nutrition_app/features/settings/feature_flags.dart';
 import 'package:nutrition_app/features/settings/feature_hub.dart';
 import 'package:nutrition_app/features/settings/settings_screen.dart';
 
 import '../../helpers/test_db.dart';
+import '../activity/fake_health_source.dart';
 
 final now = DateTime(2026, 9, 25, 9);
 
@@ -17,6 +21,7 @@ Widget app(AppDatabase db, {List<Override> extra = const []}) => ProviderScope(
   overrides: [
     databaseProvider.overrideWithValue(db),
     clockProvider.overrideWithValue(() => now),
+    hubFeatureGateOverride,
     ...extra,
   ],
   child: const MaterialApp(home: SettingsScreen()),
@@ -72,7 +77,7 @@ void main() {
     await unmount(tester);
   });
 
-  testWidgets('Feature hub lists a switch per feature, all on by default', (
+  testWidgets('Feature hub lists a switch per feature, at its default', (
     tester,
   ) async {
     tallScreen(tester);
@@ -87,12 +92,40 @@ void main() {
       findsNWidgets(AppFeature.values.length),
     );
     for (final f in AppFeature.values) {
-      expect(tile(tester, f).value, isTrue, reason: f.name);
+      expect(tile(tester, f).value, featureDefault(f), reason: f.name);
       expect(tile(tester, f).onChanged, isNotNull, reason: f.name);
       expect(find.text(f.label), findsOneWidget);
       expect(find.text(f.description), findsOneWidget);
     }
     expect(find.textContaining('Not available in the web app.'), findsNothing);
+    expect(tile(tester, AppFeature.recipes).value, isTrue);
+    expect(tile(tester, AppFeature.gainGoals).value, isFalse);
+    await unmount(tester);
+  });
+
+  testWidgets('a newer feature starts off and shows once switched on', (
+    tester,
+  ) async {
+    tallScreen(tester);
+    final db = openTestDatabase();
+    addTearDown(db.close);
+    await tester.pumpWidget(app(db));
+    await settle(tester);
+    // Gain goals arrived after the hub: its profile choice is hidden.
+    expect(find.byKey(const Key('profileForm')), findsOneWidget);
+    expect(find.byKey(const Key('goalDirection')), findsNothing);
+
+    await openHub(tester);
+    await tester.tap(find.byKey(const Key('feature-gainGoals')));
+    await settle(tester);
+    expect(tile(tester, AppFeature.gainGoals).value, isTrue);
+    expect(await tester.runAsync(() => loadFeatureFlags(db)), {
+      AppFeature.gainGoals: true,
+    });
+
+    await tester.tap(find.text('Personal details'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('goalDirection')), findsOneWidget);
     await unmount(tester);
   });
 
@@ -217,6 +250,88 @@ void main() {
           .controller!
           .text,
       '181',
+    );
+    await unmount(tester);
+  });
+
+  testWidgets('switching Recipes off in the Feature hub stays on Settings, '
+      'Feature hub', (tester) async {
+    tallScreen(tester);
+    final db = openTestDatabase();
+    addTearDown(db.close);
+    await tester.runAsync(
+      () => db
+          .into(db.profiles)
+          .insert(
+            ProfilesCompanion.insert(
+              sex: Sex.male.index,
+              birthDate: DateTime(1996, 9, 25),
+              heightCm: 180,
+              activityLevel: ActivityLevel.moderate.index,
+              goalWeightKg: 80,
+              updatedAt: now,
+            ),
+          ),
+    );
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          clockProvider.overrideWithValue(() => now),
+          healthSourceProvider.overrideWithValue(FakeHealthSource()),
+          hubFeatureGateOverride,
+        ],
+        child: const NutritionApp(),
+      ),
+    );
+    await settle(tester);
+    await tester.pump(const Duration(milliseconds: 500));
+
+    Finder destination(String label) => find.descendant(
+      of: find.byType(NavigationBar),
+      matching: find.widgetWithText(NavigationDestination, label),
+    );
+    int selectedIndex() =>
+        tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex;
+
+    await tester.tap(destination('Settings'));
+    await settle(tester);
+    expect(selectedIndex(), 4);
+    await openHub(tester);
+    expect(find.byType(FeatureHub), findsOneWidget);
+    final settingsState = tester.state(
+      find.byType(DefaultTabController).hitTestable(),
+    );
+
+    await tester.tap(find.byKey(const Key('feature-recipes')));
+    await settle(tester);
+    expect(tester.takeException(), isNull);
+    expect(destination('Recipes'), findsNothing);
+    expect(find.byType(NavigationDestination), findsNWidgets(4));
+    // Still on Settings (now the 4th tab), still on its Feature hub tab,
+    // and it is the same Settings state as before, not a rebuilt one.
+    expect(selectedIndex(), 3);
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(find.byType(FeatureHub), findsOneWidget);
+    expect(find.byKey(const Key('profileForm')).hitTestable(), findsNothing);
+    expect(
+      tester.state(find.byType(DefaultTabController).hitTestable()),
+      same(settingsState),
+    );
+    expect(tile(tester, AppFeature.recipes).value, isFalse);
+    expect(await tester.runAsync(() => loadFeatureFlags(db)), {
+      AppFeature.recipes: false,
+    });
+
+    // And back on: Recipes returns, Settings → Feature hub is still shown.
+    await tester.tap(find.byKey(const Key('feature-recipes')));
+    await settle(tester);
+    expect(destination('Recipes'), findsOneWidget);
+    expect(selectedIndex(), 4);
+    expect(find.byType(FeatureHub), findsOneWidget);
+    expect(
+      tester.state(find.byType(DefaultTabController).hitTestable()),
+      same(settingsState),
     );
     await unmount(tester);
   });

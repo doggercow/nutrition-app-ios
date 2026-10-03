@@ -11,7 +11,6 @@ import 'package:nutrition_app/features/activity/activity_providers.dart';
 import 'package:nutrition_app/features/dashboard/dashboard_logic.dart';
 import 'package:nutrition_app/features/dashboard/dashboard_screen.dart';
 import 'package:nutrition_app/features/food/food_providers.dart';
-import 'package:nutrition_app/features/settings/feature_flags.dart';
 
 import '../../helpers/test_db.dart';
 
@@ -338,9 +337,9 @@ void main() {
     await pumpDashboard(
       tester,
       extra: [
-        initialFeatureFlagsProvider.overrideWithValue(const {
-          AppFeature.activity: false,
-        }),
+        featureEnabledProvider.overrideWith(
+          (ref, f) => f != AppFeature.activity,
+        ),
       ],
     );
     expect(tester.takeException(), isNull);

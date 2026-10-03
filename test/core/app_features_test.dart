@@ -13,33 +13,13 @@ void main() {
     expect(AppFeature.recipes.storageKey, 'recipes');
     expect(AppFeature.yesterdayPrompt.storageKey, 'yesterdayPrompt');
     expect(AppFeature.barcodeScan.storageKey, 'barcodeScan');
+    expect(AppFeature.gainGoals.storageKey, 'gainGoals');
   });
 
   test('every feature has a label and a description', () {
     for (final f in AppFeature.values) {
       expect(f.label, isNotEmpty, reason: f.name);
       expect(f.description, isNotEmpty, reason: f.name);
-    }
-  });
-
-  test('baseline features start on; later ones only in a normal build', () {
-    expect(defaultEnabledFor(baseline: true, optIn: false), isTrue);
-    expect(defaultEnabledFor(baseline: true, optIn: true), isTrue);
-    expect(defaultEnabledFor(baseline: false, optIn: false), isTrue);
-    expect(defaultEnabledFor(baseline: false, optIn: true), isFalse);
-  });
-
-  test('the four initial features are baseline and start on', () {
-    // Tests run without NEW_FEATURES_OPT_IN.
-    expect(newFeaturesOptIn, isFalse);
-    for (final f in [
-      AppFeature.activity,
-      AppFeature.recipes,
-      AppFeature.yesterdayPrompt,
-      AppFeature.barcodeScan,
-    ]) {
-      expect(f.baseline, isTrue, reason: f.name);
-      expect(f.defaultEnabled, isTrue, reason: f.name);
     }
   });
 

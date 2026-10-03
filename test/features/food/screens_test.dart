@@ -16,7 +16,6 @@ import 'package:nutrition_app/features/food/screens/add_food_screen.dart';
 import 'package:nutrition_app/features/food/screens/custom_food_screen.dart';
 import 'package:nutrition_app/features/food/screens/portion_screen.dart';
 import 'package:nutrition_app/features/food/widgets/food_search_panel.dart';
-import 'package:nutrition_app/features/settings/feature_flags.dart';
 
 import '../../helpers/test_db.dart';
 import 'fixture.dart';
@@ -44,7 +43,7 @@ void main() {
     WidgetTester tester,
     Widget home, {
     http.Client? client,
-    Map<AppFeature, bool> featureFlags = const {},
+    Set<AppFeature> featuresOff = const {},
   }) async {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 2.5;
@@ -57,7 +56,10 @@ void main() {
           foodHttpClientProvider.overrideWithValue(
             client ?? mock((_) => throw StateError('no network in tests')),
           ),
-          initialFeatureFlagsProvider.overrideWithValue(featureFlags),
+          if (featuresOff.isNotEmpty)
+            featureEnabledProvider.overrideWith(
+              (ref, f) => !featuresOff.contains(f),
+            ),
         ],
         child: MaterialApp(home: home),
       ),
@@ -450,7 +452,7 @@ void main() {
       await pump(
         tester,
         screen,
-        featureFlags: const {AppFeature.barcodeScan: false},
+        featuresOff: const {AppFeature.barcodeScan},
       );
       expect(tester.takeException(), isNull);
       expect(find.byKey(const Key('scan-button')), findsNothing);

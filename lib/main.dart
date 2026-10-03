@@ -48,6 +48,7 @@ void main() async {
       overrides: [
         databaseProvider.overrideWithValue(db),
         initialFeatureFlagsProvider.overrideWithValue(featureFlags),
+        hubFeatureGateOverride,
       ],
       child: const NutritionApp(),
     ),

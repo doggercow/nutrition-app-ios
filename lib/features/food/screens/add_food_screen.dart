@@ -9,7 +9,6 @@ import '../../../core/app_features.dart';
 import '../../../core/day_key.dart';
 import '../../../data/db/database.dart';
 import '../../../domain/models.dart';
-import '../../settings/feature_flags.dart';
 import '../data/barcode_lookup.dart';
 import '../data/food_repository.dart';
 import '../data/remote_food.dart';
@@ -237,7 +236,7 @@ class _AddFoodScreenState extends ConsumerState<AddFoodScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Scanning can be switched off in Settings → Feature hub.
+    // Scanning is behind a feature gate (see featureEnabledProvider).
     final scanEnabled = ref.watch(
       featureEnabledProvider(AppFeature.barcodeScan),
     );

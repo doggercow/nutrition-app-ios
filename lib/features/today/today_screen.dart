@@ -11,7 +11,6 @@ import '../../core/day_key.dart';
 import '../activity/widgets/activity_card.dart';
 import '../dashboard/dashboard_providers.dart';
 import '../food/widgets/meals_section.dart';
-import '../settings/feature_flags.dart';
 import '../targets/checkin_screen.dart';
 import '../targets/targets_providers.dart';
 import '../weight/weight_providers.dart';
@@ -79,7 +78,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
     final weighIns = ref.watch(weighInsProvider).value;
     final isToday = dayKey == today;
     final canGoForward = dayKey.compareTo(today) < 0;
-    // Both can be switched off in Settings → Feature hub.
+    // Both are behind a feature gate (see featureEnabledProvider).
     final showActivity = ref.watch(featureEnabledProvider(AppFeature.activity));
     final showYesterdayPrompt = ref.watch(
       featureEnabledProvider(AppFeature.yesterdayPrompt),
@@ -154,7 +153,7 @@ class _TodayScreenState extends ConsumerState<TodayScreen> {
           if (!isToday && weight != null) weight,
           MealsSection(dayKey: dayKey),
           // Steps and workouts come from Health Connect, which web lacks;
-          // on Android the card can be switched off in the Feature hub.
+          // the gate is off there.
           if (showActivity) ActivityCard(dayKey: dayKey),
         ],
       ),
