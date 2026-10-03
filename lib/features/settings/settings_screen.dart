@@ -665,14 +665,13 @@ class _ProfileFormState extends ConsumerState<ProfileForm> {
                     value: GoalDirection.gain,
                     label: Text('Gain weight'),
                   ),
-    
-            ],
-              selected: {_goalDirection},
-              onSelectionChanged: locked
-                  ? null
-                  : (s) => setState(() => _goalDirection = s.first),
-            ),
-            const SizedBox(height: 12),
+                ],
+                selected: {_goalDirection},
+                onSelectionChanged: locked
+                    ? null
+                    : (s) => setState(() => _goalDirection = s.first),
+              ),
+              const SizedBox(height: 12),
             ],
             TextFormField(
               key: const Key('goalWeightKg'),
