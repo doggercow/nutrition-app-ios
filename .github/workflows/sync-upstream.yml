@@ -1,0 +1,57 @@
+name: Sync with upstream
+
+# Fork only: once a day, merges DanielDaCool/nutrition-app's main into this
+# repository's main and redeploys the web app, so the fork keeps up without
+# anyone doing it by hand. Does nothing when already up to date.
+#
+# The job fails (GitHub emails the owner) and leaves main untouched when:
+# - the merge conflicts with changes made here, or
+# - upstream changed a file under .github/workflows/, which the workflow
+#   token isn't allowed to push. Merge upstream/main by hand in either case.
+
+on:
+  schedule:
+    - cron: '23 3 * * *' # daily, 03:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository != 'DanielDaCool/nutrition-app'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Merge upstream main
+        id: merge
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch https://github.com/DanielDaCool/nutrition-app.git main
+          if git merge-base --is-ancestor FETCH_HEAD HEAD; then
+            echo "Already up to date with upstream."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git merge --no-edit -m "Merge DanielDaCool/nutrition-app main" FETCH_HEAD
+          git push origin main
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      # A push made with the workflow token doesn't start other workflows,
+      # so start the Pages build and deploy explicitly.
+      - name: Redeploy the web app
+        if: steps.merge.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run web.yml --repo "$GITHUB_REPOSITORY" --ref main
