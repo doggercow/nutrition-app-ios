@@ -72,7 +72,7 @@ void main() {
       return c;
     }
 
-    test('the features from before the hub are on by default', () {
+    test('features from before the hub and user-requested ones are on', () {
       final c = container();
       for (final f in featuresOnByDefault) {
         expect(featureDefault(f), isTrue, reason: f.name);
@@ -83,6 +83,7 @@ void main() {
         AppFeature.recipes,
         AppFeature.yesterdayPrompt,
         AppFeature.barcodeScan,
+        AppFeature.lifting,
       });
     });
 

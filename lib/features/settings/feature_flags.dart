@@ -13,14 +13,16 @@ import '../../data/db/database.dart';
 
 const _prefix = 'feature.';
 
-/// The features that existed when the Feature hub was introduced. Every
-/// other feature (i.e. anything new that arrives from upstream) starts
-/// switched OFF until the user turns it on.
+/// The features that existed when the Feature hub was introduced, plus the
+/// ones the user asked for themselves. Every other feature (i.e. anything
+/// new that arrives from upstream) starts switched OFF until the user turns
+/// it on.
 const Set<AppFeature> featuresOnByDefault = {
   AppFeature.activity,
   AppFeature.recipes,
   AppFeature.yesterdayPrompt,
   AppFeature.barcodeScan,
+  AppFeature.lifting,
 };
 
 /// Whether [f] is on until the user chooses otherwise.

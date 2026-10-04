@@ -296,7 +296,7 @@ void main() {
 
     await tester.tap(destination('Settings'));
     await settle(tester);
-    expect(selectedIndex(), 4);
+    expect(selectedIndex(), 5);
     await openHub(tester);
     expect(find.byType(FeatureHub), findsOneWidget);
     final settingsState = tester.state(
@@ -307,10 +307,10 @@ void main() {
     await settle(tester);
     expect(tester.takeException(), isNull);
     expect(destination('Recipes'), findsNothing);
-    expect(find.byType(NavigationDestination), findsNWidgets(4));
-    // Still on Settings (now the 4th tab), still on its Feature hub tab,
+    expect(find.byType(NavigationDestination), findsNWidgets(5));
+    // Still on Settings (now the 5th tab), still on its Feature hub tab,
     // and it is the same Settings state as before, not a rebuilt one.
-    expect(selectedIndex(), 3);
+    expect(selectedIndex(), 4);
     expect(find.byType(SettingsScreen), findsOneWidget);
     expect(find.byType(FeatureHub), findsOneWidget);
     expect(find.byKey(const Key('profileForm')).hitTestable(), findsNothing);
@@ -327,7 +327,7 @@ void main() {
     await tester.tap(find.byKey(const Key('feature-recipes')));
     await settle(tester);
     expect(destination('Recipes'), findsOneWidget);
-    expect(selectedIndex(), 4);
+    expect(selectedIndex(), 5);
     expect(find.byType(FeatureHub), findsOneWidget);
     expect(
       tester.state(find.byType(DefaultTabController).hitTestable()),
