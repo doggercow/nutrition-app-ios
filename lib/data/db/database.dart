@@ -38,7 +38,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   /// The on-device database file (nutrition.sqlite in app documents). On web
-  /// drift runs sqlite3.wasm in drift_worker.js (both from the drift 2.35.0
+  /// drift runs sqlite3.wasm in drift_worker.js (both from the drift 2.35.1
   /// release, in web/) and stores the database in the browser. The URIs are
   /// relative so they resolve against `<base href>` when served from a subpath.
   AppDatabase.defaults()
@@ -51,24 +51,6 @@ class AppDatabase extends _$AppDatabase {
           ),
         ),
       );
-
-  /// Like drift's `transaction`, followed by one statement outside of it.
-  ///
-  /// On web, drift 2.35.0 doesn't save what a transaction wrote to IndexedDB
-  /// until the next statement that runs outside a transaction (fixed in
-  /// 2.35.1, "writes made in transactions ... not being persisted"), so a
-  /// reload right after e.g. adding a set lost it. The pragma changes nothing
-  /// (foreign keys are already on) and only triggers that save. Remove this
-  /// override once drift and web/drift_worker.js are on 2.35.1 or later.
-  @override
-  Future<T> transaction<T>(
-    Future<T> Function() action, {
-    bool requireNew = false,
-  }) async {
-    final result = await super.transaction(action, requireNew: requireNew);
-    await customStatement('PRAGMA foreign_keys = ON');
-    return result;
-  }
 
   @override
   int get schemaVersion => 4;
