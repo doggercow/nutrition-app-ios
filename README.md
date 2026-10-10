@@ -1,112 +1,38 @@
-# Nutrition App
+<div align="center">
+  <img src="assets/icon/full-icon.png" alt="Nutrition App icon — bowl and sprout" width="112" height="112">
 
-A personal Android app for losing weight: log what you eat, weigh in every morning, and get
+  # Nutrition App
+
+  [![CI](https://github.com/DanielDaCool/nutrition-app/actions/workflows/ci.yml/badge.svg)](https://github.com/DanielDaCool/nutrition-app/actions/workflows/ci.yml)
+  [![Web](https://github.com/DanielDaCool/nutrition-app/actions/workflows/web.yml/badge.svg)](https://github.com/DanielDaCool/nutrition-app/actions/workflows/web.yml)
+  [![Release](https://img.shields.io/github/v/release/DanielDaCool/nutrition-app?label=release)](https://github.com/DanielDaCool/nutrition-app/releases/latest)
+</div>
+
+A personal app for losing (or gaining) weight: log what you eat, weigh in every morning, and get
 calorie and macro targets that adjust every week based on how your weight is actually moving.
 Steps and gym workouts come in automatically from Health Connect (Hevy writes workouts there), or
 you can log a workout by hand.
 
-Everything is stored on the phone. There's no account, no server and no login. Dark theme only
-("Midnight Indigo" — periwinkle with a coral accent), regardless of your phone's setting.
+Everything is stored on the phone (or the browser, for the web build). There's no account, no
+server and no login. Each person's data stays on their own device; Settings → Export data saves
+a backup, and Import data (or *Restore from a backup* on first run) brings it back on a new phone. Dark theme only ("Midnight Indigo" — periwinkle with a coral accent),
+regardless of your device's setting.
 
-## What it does
+### 📖 [Read the user manual](https://danieldacool.github.io/nutrition-app/manual/)
 
-- **Food logging.** Search Open Food Facts (packaged products) or USDA (generic foods like
-  chicken breast or rice), scan a barcode, or add a food from its label. Foods you've used show up
-  under Recent and Favorites, so after a couple of weeks most logging is a few taps.
-- **Describe what you ate.** Type a meal the way you'd say it ("5 spoons of cottage cheese 5% and
-  2 eggs", "chicken breast 200g, 1 cup rice") and it's understood as you type: each food with its
-  grams, calories and how the grams were worked out, ready to add in one tap. It's free and works
-  offline (a built-in list of about 120 common and Israeli foods plus your own foods, no account
-  or API key), and it learns: pick a different food or fix the grams once and next time your words
-  and your spoon size are used.
-- **Copy a day's meals.** Copy yesterday's whole day, one meal from yesterday, or a whole day or a
-  single meal from any past date, into today (or whatever day you're viewing) — with an Undo
-  snackbar after. An empty meal also gets a one-tap "Same as yesterday" chip.
-- **Edit a past day.** The calendar icon on Today jumps to any earlier day to fix or fill in its
-  meals; the arrows next to it step one day at a time (never past today).
-- **Daily weigh-ins.** One weigh-in per day. The app smooths them into a trend line, so water and
-  salt swings don't hide real progress.
-- **Adaptive targets.** Each week (Sunday by default) the check-in compares what you ate on fully
-  logged days with how your trend weight moved, estimates your real maintenance calories, and
-  recommends new calories plus protein, fat and carbs for your chosen weekly loss rate.
-- **Steps and workouts.** Steps and Hevy workouts are read from Health Connect every time the app
-  opens. They're shown for context and are never added back to your calorie budget. You can also
-  log a walk, run or other exercise by hand (speed/incline or a flat MET estimate, or just type the
-  calories) for sessions Health Connect missed. Settings has a step-goal slider (3,000–20,000,
-  default 10,000) and an optional walk reminder notification.
-- **Recipes.** A browsable catalog of bundled recipes by meal (breakfast/lunch/dinner/snack), with
-  search, filters by calorie/macro limits, and a "Recommended for you" row based on what's left of
-  today's targets. Tap a recipe for its ingredients, steps and full macros.
-- **Weight lifting.** Plan which exercises to do on a day (today or ahead), from your own exercise
-  list or a saved preset such as "Push day", then track the reps and weight of every set. Each
-  exercise shows all the sets you did last time.
-- **Dashboard.** Weight trend, weekly intake against target, steps per day, workouts per week,
-  lifting progress per exercise and the maintenance estimate over time.
-- **Home-screen widget and lock-screen notification.** An Android home-screen widget shows
-  calories left and today's steps. Since Android 15 removed lock-screen widgets, there's also an
-  ongoing notification with the same steps-vs-goal and calories-left info, built natively so it can
-  show a custom layout.
-- **Export.** Settings → Export data writes everything to a JSON file you can save or share.
+Installing it, first-time setup, and how to use every screen are all there, not repeated here.
 
-A web build usable from an iPhone is planned but not available yet.
+**Get it:** [Android APK](https://github.com/DanielDaCool/nutrition-app/releases/latest/download/nutrition.apk) · [Web app (iPhone-friendly)](https://danieldacool.github.io/nutrition-app/) · [What's new](https://github.com/DanielDaCool/nutrition-app/releases)
 
-## How the calorie recommendation works
+Both always serve the latest release. On iPhone, open the web app in Safari and use Share → Add to
+Home Screen. Your version is shown at the bottom of Settings.
 
-1. **Start:** before there's enough data, maintenance = Mifflin-St Jeor BMR × your activity level.
-2. **Learn:** once there are at least 7 fully logged days, 6 weigh-ins and a 10-day trend in the
-   last 21 days, the app measures maintenance:
-   `average intake − (trend weight change × 7700 kcal/kg) ÷ days`.
-   It blends from the formula to the measured value as more logged days come in.
-3. **Target:** maintenance minus the deficit for your weekly loss rate (0.25–1.0 % of body weight
-   per week). The deficit is capped at 25 % of maintenance or 1000 kcal, and the target never drops
-   below your BMR (or 1500 kcal for men, 1200 kcal for women).
-4. **Macros:** protein 1.6–2.2 g per kg, fat is the larger of 0.8 g per kg and 25 % of calories,
-   and carbs fill the rest (at least 50 g).
-5. **Stability:** maintenance moves at most 150 kcal per week, and the target only changes when you
-   accept the weekly check-in.
+### Contents
 
-Only days you mark **"Day fully logged"** count. A day where you forgot dinner would otherwise make
-it look like you eat less than you really do. The full spec is in [docs/engine.md](docs/engine.md).
-
-## Installing on your phone
-
-1. Download [`nutrition.apk`](https://github.com/DanielDaCool/nutrition-app/releases/download/latest-apk/nutrition.apk) — the `latest-apk` release, rebuilt from `main` on every push. The repo is
-   public, so this works without being signed in to GitHub.
-2. Open it on the phone and allow installing from that source.
-
-For a pull request's build instead, open its run on the [Actions tab](https://github.com/DanielDaCool/nutrition-app/actions) and download the `nutrition-app-apk` artifact (needs a GitHub login), then copy `app-release.apk` to the phone.
-
-**Keep your data between updates:** new versions only install over the old one if every build is
-signed with the same key. Set these repository secrets once (Settings → Secrets and variables →
-Actions):
-
-| Secret | Value |
-|---|---|
-| `ANDROID_KEYSTORE_BASE64` | your release `.jks` file, base64-encoded |
-| `ANDROID_KEYSTORE_PASSWORD` | keystore password |
-| `ANDROID_KEY_ALIAS` | key alias |
-| `ANDROID_KEY_PASSWORD` | key password |
-| `USDA_API_KEY` | optional: free key from [api.data.gov](https://api.data.gov/signup/) (the shared demo key allows ~50 searches a day) |
-
-Without the signing secrets, CI signs with a throwaway debug key and you'd have to uninstall
-(losing your data) to install a newer build. Keep the `.jks` file and passwords backed up outside
-the repo.
-
-## Connecting Hevy and steps (Health Connect)
-
-Health Connect is built into Android 14 and newer.
-
-1. In the app: **Settings → Health Connect → Connect**, allow steps, exercise, distance and calories,
-   then allow access to past data (this lets the first sync go back 90 days instead of 30).
-2. **Steps:** Health Connect starts counting steps on the phone itself as soon as an app is allowed
-   to read steps. Your old step counter app doesn't need to share anything. The two counts may differ
-   slightly.
-3. **Workouts:** in Hevy, turn on syncing to Health Connect. Hevy workouts then appear on the Today
-   screen after the next sync. The sync runs whenever the app opens or comes back to the
-   foreground, and there's also a Sync now button.
-
-The `health` package doesn't pass through workout titles yet, so workouts show their type (for
-example "Strength training") rather than the name you gave them in Hevy.
+- [Development](#development)
+- [How the calorie recommendation works](#how-the-calorie-recommendation-works)
+- [Releasing a new version](#releasing-a-new-version)
+- [Data sources](#data-sources)
 
 ## Development
 
@@ -118,7 +44,7 @@ dart run build_runner build   # after changing lib/data/db/tables.dart
 flutter analyze
 flutter test
 flutter run                   # with a phone connected (USB debugging on)
-flutter build apk --release --dart-define=USDA_API_KEY=your_key
+flutter build apk --release --dart-define=USDA_API_KEY=your_key --dart-define=APP_VERSION=0.0.0+2
 ```
 
 For local release signing, create `android/key.properties` (it's git-ignored):
@@ -142,25 +68,94 @@ lib/
   features/
     food/                 Open Food Facts + USDA clients, food log, add-food screens
     targets/              calorie engine, current targets, weekly check-in
-    settings/             profile and goals, data export
+    settings/             profile and goals, backups (export and import)
     activity/             Health Connect sync (steps, workouts), manual exercise, step goal, walk reminder
     weight/               weigh-ins, trend chart
     today/                Today screen
     dashboard/            charts over time
     recipes/              bundled recipe catalog, search/filters, recommendations
     lifting/              exercises, presets, planned days and tracked sets
-    widget_home/          Android home-screen widget + lock-screen notification sync
 test/                     unit, provider and widget tests (in-memory database)
-docs/                     plan and calorie engine spec
+docs/                     plan, calorie engine spec, and the user manual's source
 ```
 
 Tech: Flutter, Riverpod 3 for state, Drift for the local database, `health` for Health Connect,
 `mobile_scanner` for barcodes and `fl_chart` for charts.
 
-CI (`.github/workflows/ci.yml`) runs on every push to `main` and every pull request. It checks that
-the generated database code is up to date, then runs analyze and the tests, and builds the release
-APK as a downloadable artifact. On a push to `main` it also publishes that APK to the `latest-apk`
-GitHub release (see Installing, above).
+Two workflows run in CI:
+
+- **`ci.yml`** — on every push to `main` and every pull request: checks that the generated database
+  code is up to date, then runs analyze and the tests, and builds the release APK as a downloadable
+  artifact. On a version tag it also attaches the APK to that version's GitHub release.
+- **`web.yml`** — builds the Flutter web app on every push and pull request. On a version tag it
+  deploys it (together with the user manual) to GitHub Pages at the web app link above.
+
+Merging to `main` doesn't change what friends have; only [a release](#releasing-a-new-version) does.
+
+## How the calorie recommendation works
+
+1. **Start:** before there's enough data, maintenance = Mifflin-St Jeor BMR × your activity level.
+2. **Learn:** once there are at least 7 fully logged days, 6 weigh-ins and a 10-day trend in the
+   last 21 days, the app measures maintenance:
+   `average intake − (trend weight change × 7700 kcal/kg) ÷ days`.
+   It blends from the formula to the measured value as more logged days come in.
+3. **Target:** maintenance minus the deficit (losing) or plus the surplus (gaining) for your
+   weekly rate, which you pick with a slider from 0.25 % of body weight a week up to a cap the
+   app sets from your BMI and body fat. Losing: cap is 0.5–1.0 % (higher BMI/body fat allows a
+   faster loss rate), deficit capped at 25 % of maintenance or 750 kcal, target never below
+   your BMR (or 1500 kcal for men, 1200 kcal for women). Gaining: cap is 0.25–0.5 % (leaner
+   people get more surplus headroom for muscle building; modest surpluses build about as much
+   muscle as large ones), surplus capped at 25 % of maintenance or 500 kcal.
+4. **Macros:** protein 1.6–2.2 g per kg, fat is the larger of 0.8 g per kg and 25 % of calories,
+   and carbs fill the rest (at least 50 g).
+5. **Stability:** maintenance moves at most 150 kcal per week, and the target only changes when you
+   accept the weekly check-in.
+
+Only days you mark **"Day fully logged"** count. A day where you forgot dinner would otherwise make
+it look like you eat less than you really do. The full spec is in [docs/engine.md](docs/engine.md).
+
+## Releasing a new version
+
+1. In `pubspec.yaml`, raise `version:`, both the name and the build number after `+`
+   (e.g. `0.0.0+2` → `0.1.0+3`). Android only installs an update with a higher build number.
+2. Merge that to `main` and wait for CI to pass.
+3. Tag the merge commit and push the tag. The tag drops trailing zeros if you like (`v0.1` is
+   version `0.1.0`), but it must match `pubspec.yaml`, or CI stops the release:
+
+   ```bash
+   git tag v0.1 origin/main
+   git push origin v0.1
+   ```
+
+   Or create the release on GitHub (Releases → Draft a new release, new tag `v0.1` on `main`)
+   to write the notes yourself.
+
+The tag's CI run builds the APK and attaches it to the `v0.1` release (creating it, with notes
+listing the merged pull requests, if it doesn't exist) and marks it as the latest. The tag's Web
+run deploys the web app. Friends get the new APK from the same download link; the web app
+updates the next time they open it.
+
+### Signing secrets
+
+**Keep your data between updates:** new versions only install over the old one if every build is
+signed with the same key. Set these repository secrets once (Settings → Secrets and variables →
+Actions):
+
+| Secret | Value |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | your release `.jks` file, base64-encoded |
+| `ANDROID_KEYSTORE_PASSWORD` | keystore password |
+| `ANDROID_KEY_ALIAS` | key alias |
+| `ANDROID_KEY_PASSWORD` | key password |
+| `USDA_API_KEY` | free key from [api.data.gov](https://api.data.gov/signup/), used by the APK and web builds (without it they fall back to the shared demo key, ~30 searches an hour). It's readable in the web app's JavaScript; rotate it if it's abused |
+
+Without the signing secrets, CI signs with a throwaway debug key and you'd have to uninstall
+(losing your data) to install a newer build. Keep the `.jks` file and passwords backed up outside
+the repo.
+
+To try a pull request's build before it's released, open its run on the
+[Actions tab](https://github.com/DanielDaCool/nutrition-app/actions) and download the
+`nutrition-app-apk` artifact (needs a GitHub login), then copy `app-release.apk` to the phone.
 
 ## Data sources
 

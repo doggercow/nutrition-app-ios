@@ -1,26 +1,42 @@
 name: Web
 
-# Builds the Flutter web app and, on main, publishes it to GitHub Pages at
-# https://danieldacool.github.io/nutrition-app/. Separate from ci.yml, which
-# keeps doing codegen check, analyze, test and the Android APK.
+# Builds the Flutter web app on every push to main and every pull request.
+# A version tag (v0.1, ...) publishes it to GitHub Pages at
+# https://danieldacool.github.io/nutrition-app/, so friends only get
+# released versions. Separate from ci.yml, which keeps doing codegen check,
+# analyze, test and the Android APK.
 #
 # A fork can publish its own copy at https://<owner>.github.io/<repo>/ by
 # enabling Pages (source: GitHub Actions) and setting the repository variable
-# DEPLOY_PAGES to "true".
+# DEPLOY_PAGES to "true"; a fork publishes from its main branch.
 
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+env:
+  # Whether this run publishes: a version tag here, or main in a fork that
+  # opted in.
+  DEPLOY: >-
+    ${{ github.event_name != 'pull_request' && (
+      (github.repository == 'DanielDaCool/nutrition-app' &&
+       startsWith(github.ref, 'refs/tags/v')) ||
+      (github.repository != 'DanielDaCool/nutrition-app' &&
+       vars.DEPLOY_PAGES == 'true' && github.ref == 'refs/heads/main')) }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # A job-level `if` can't read env, so deploy reads this instead.
+    outputs:
+      deploy: ${{ env.DEPLOY }}
     concurrency:
       group: web-build-${{ github.ref }}
       cancel-in-progress: true
@@ -36,27 +52,40 @@ jobs:
       - name: Install packages
         run: flutter pub get
 
-      # Pages serves the site from /<repository name>/, not the domain root.
-      # No USDA_API_KEY here: anything passed by --dart-define is readable in
-      # the public JS bundle, so the web build uses the DEMO_KEY default.
-      - name: Build web
-        run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
+      # Sets APP_VERSION; on a tag, fails unless the tag matches pubspec.yaml.
+      - name: Read app version
+        run: .github/scripts/app-version.sh
 
-      - name: Upload Pages artifact (main only)
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+      # Pages serves the site from /<repository name>/, not the domain root.
+      # The USDA key ends up readable in the public JS bundle. Accepted: it's
+      # a free api.data.gov key whose worst case is someone using up its
+      # hourly quota, and DEMO_KEY (30 requests/hour per IP) is too little
+      # for friends using the web app. Rotate the secret if it's abused.
+      # Fork PRs and forks without the secret fall back to DEMO_KEY.
+      - name: Build web
+        env:
+          USDA_API_KEY: ${{ secrets.USDA_API_KEY }}
+          REPORT_RELAY_URL: ${{ secrets.REPORT_RELAY_URL }}
+        run: >-
+          flutter build web --release
+          --base-href "/${{ github.event.repository.name }}/"
+          --dart-define=USDA_API_KEY="${USDA_API_KEY:-DEMO_KEY}"
+          --dart-define=APP_VERSION="$APP_VERSION"
+          --dart-define=REPORT_RELAY_URL="$REPORT_RELAY_URL"
+
+      - name: Copy user manual into the Pages build
+        run: cp -r docs/manual build/web/manual
+
+      - name: Upload Pages artifact (releases only)
+        if: env.DEPLOY == 'true'
         uses: actions/upload-pages-artifact@v5
         with:
           path: build/web
 
-  # Pull requests (including from forks) stop after the build above. Only
-  # main deploys, in this repository or in a fork that opted in.
+  # Pull requests and pushes to main stop after the build above.
   deploy:
     needs: build
-    if: >-
-      github.event_name != 'pull_request' &&
-      github.ref == 'refs/heads/main' &&
-      (github.repository == 'DanielDaCool/nutrition-app' ||
-      vars.DEPLOY_PAGES == 'true')
+    if: needs.build.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

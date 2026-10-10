@@ -19,8 +19,10 @@ import '../features/targets/targets_providers.dart';
 import '../features/today/today_screen.dart';
 import '../features/weight/weight_providers.dart';
 import '../features/weight/weight_screen.dart';
+import 'install_hint_banner.dart';
 import 'providers.dart';
 import 'theme.dart';
+import 'update_available_banner.dart';
 
 /// Root `MaterialApp`: dark only (see theme.dart), whatever the phone's
 /// setting.
@@ -197,11 +199,37 @@ class _HomeShellState extends ConsumerState<HomeShell>
     // doesn't jump back when the tab returns.
     if (!tabs.contains(_tab)) _tab = _Tab.today;
     final index = tabs.indexOf(_tab);
+    Widget body = IndexedStack(
+      index: index,
+      children: [for (final t in tabs) _page(t)],
+    );
+    // Banners sit above the status bar inset instead of inside it, so the
+    // screens below (each with their own AppBar/SafeArea) must not also
+    // apply that inset, or it would be counted twice.
+    final banners = <Widget>[
+      if (ref.watch(showInstallHintProvider)) const InstallHintBanner(),
+      if (ref.watch(updateAvailableTagProvider) != null)
+        const UpdateAvailableBanner(),
+    ];
+    if (banners.isNotEmpty) {
+      body = SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            ...banners,
+            Expanded(
+              child: MediaQuery.removePadding(
+                context: context,
+                removeTop: true,
+                child: body,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     return Scaffold(
-      body: IndexedStack(
-        index: index,
-        children: [for (final t in tabs) _page(t)],
-      ),
+      body: body,
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         // Six labels at the default size don't fit a phone's width

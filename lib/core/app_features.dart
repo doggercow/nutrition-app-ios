@@ -65,6 +65,44 @@ enum AppFeature {
     description:
         'The Lifting tab, where you plan exercises for a day and track '
         'your sets, and the lifting progress chart on the Dashboard.',
+  ),
+
+  /// Export data and Import data in Settings, and Restore from a backup on
+  /// first-run setup.
+  backup(
+    storageKey: 'backup',
+    label: 'Backups',
+    description:
+        'Export data and Import data in Settings, and Restore from a '
+        'backup on first-run setup.',
+  ),
+
+  /// The "Add to Home Screen" banner shown on iPhone Safari.
+  installHint(
+    storageKey: 'installHint',
+    label: 'Add to Home Screen hint',
+    description:
+        'The banner on iPhone Safari suggesting you add Nutrition to your '
+        'Home Screen so your data survives longer.',
+  ),
+
+  /// "Report a problem" in Settings.
+  reportProblem(
+    storageKey: 'reportProblem',
+    label: 'Report a problem',
+    description:
+        'The "Report a problem" row in Settings that sends a description, '
+        'your app version and platform to the developer.',
+  ),
+
+  /// The "Update available" banner that links to the latest release's APK.
+  updateAvailable(
+    storageKey: 'updateAvailable',
+    label: 'Update available banner',
+    description:
+        'The banner telling you a newer version is out, with a link to '
+        'download it.',
+    androidOnly: true,
   );
 
   const AppFeature({

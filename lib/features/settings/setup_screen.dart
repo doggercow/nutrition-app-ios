@@ -6,10 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../core/app_features.dart';
 import '../../core/day_key.dart';
 import '../activity/widgets/health_connect_tile.dart';
 import '../weight/weight_logic.dart';
 import '../weight/weight_providers.dart';
+import '../weight/widgets/weight_input.dart';
+import 'import_flow.dart';
 import 'settings_screen.dart';
 
 /// Opens [SetupScreen] as a full-screen page.
@@ -22,7 +25,8 @@ Future<void> openSetup(BuildContext context) => Navigator.of(context).push(
 
 /// Full-screen first-run setup. "Save and start" stores the profile (through
 /// [ProfileForm], so validation is shared) and today's weigh-in (through the
-/// weight feature's repository); "Later" just closes it.
+/// weight feature's repository); "Restore from a backup" imports an export
+/// instead; "Later" just closes it.
 class SetupScreen extends ConsumerStatefulWidget {
   const SetupScreen({super.key});
 
@@ -92,6 +96,13 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
     Navigator.of(context).maybePop();
   }
 
+  /// Moving to a new phone: restore the old one's export instead of
+  /// starting over. Closes setup once the profile is back.
+  Future<void> _restore() async {
+    final restored = await runImport(context, ref);
+    if (restored && mounted) Navigator.of(context).maybePop();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -135,9 +146,8 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
                       ? 'Optional, you already logged a weigh-in'
                       : 'Needed for your first target',
                 ),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
+                keyboardType: weightKeyboardType,
+                inputFormatters: const [WeightInputFormatter()],
                 textInputAction: TextInputAction.done,
                 validator: _validateWeight,
               ),
@@ -152,6 +162,15 @@ class _SetupScreenState extends ConsumerState<SetupScreen> {
               ],
             ],
           ),
+          if (ref.watch(featureEnabledProvider(AppFeature.backup)))
+            Center(
+              child: TextButton.icon(
+                key: const Key('setupRestore'),
+                onPressed: _restore,
+                icon: const Icon(Icons.restore),
+                label: const Text('Restore from a backup'),
+              ),
+            ),
           Center(
             child: TextButton(
               onPressed: () => Navigator.of(context).maybePop(),

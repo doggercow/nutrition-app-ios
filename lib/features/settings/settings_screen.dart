@@ -5,11 +5,13 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../app/providers.dart';
 import '../../core/app_features.dart';
+import '../../core/app_version.dart';
 import '../../data/db/database.dart';
 import '../../domain/models.dart';
 import '../activity/widgets/health_connect_tile.dart';
@@ -23,6 +25,8 @@ import '../weight/weight_providers.dart';
 import 'data_export.dart';
 import 'error_retry.dart';
 import 'feature_hub.dart';
+import 'import_flow.dart';
+import 'report_problem_tile.dart';
 
 /// The Settings tab of the home shell: "Personal details" (targets, check-in,
 /// profile, Health Connect, export) and the "Feature hub" ([FeatureHub]).
@@ -116,15 +120,34 @@ class _PersonalDetails extends ConsumerWidget {
           const Divider(),
           ...profileSection,
         ],
-        // Health Connect, walk reminders and file export are Android-only;
-        // the step goal only applies to Health Connect steps.
+        // Health Connect and walk reminders are Android-only; the step
+        // goal only applies to Health Connect steps.
         if (!isWeb) ...const [
           Divider(),
           HealthConnectSettingsTile(),
           StepGoalSettingsTile(),
           WalkReminderSettingsTile(),
-          ExportDataTile(),
         ],
+        if (ref.watch(featureEnabledProvider(AppFeature.backup))) ...const [
+          Divider(),
+          _SectionHeader('Your data'),
+          ExportDataTile(),
+          ImportDataTile(),
+        ],
+        if (ref.watch(featureEnabledProvider(AppFeature.reportProblem))) ...[
+          const Divider(),
+          const ReportProblemTile(),
+        ],
+        // Friends quote this when reporting a problem.
+        Padding(
+          key: const Key('appVersion'),
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+          child: Text(
+            'Version ${appVersionLabel(appVersion)}',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
       ],
     );
   }
@@ -141,7 +164,10 @@ class _SectionHeader extends StatelessWidget {
   );
 }
 
-/// The targets in effect today.
+/// How today's targets came to be: the maintenance estimate behind them and
+/// when they took effect. The targets themselves (kcal, macros, eaten vs.
+/// remaining) are tracked live on the Today tab, so they aren't repeated
+/// here.
 class CurrentTargetsCard extends ConsumerWidget {
   const CurrentTargetsCard({super.key});
 
@@ -173,22 +199,19 @@ class CurrentTargetsCard extends ConsumerWidget {
                           'weight to get your daily targets.',
               );
             }
-            final m = t.macros;
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Daily targets', style: theme.textTheme.titleMedium),
-                const SizedBox(height: 4),
-                Text(kcal(m.kcal), style: theme.textTheme.headlineMedium),
-                Text(
-                  'Protein ${m.proteinG.round()} g · Fat ${m.fatG.round()} g · '
-                  'Carbs ${m.carbsG.round()} g',
-                ),
+                Text('Your targets', style: theme.textTheme.titleMedium),
                 const SizedBox(height: 4),
                 Text(
                   'Maintenance about ${kcal(t.maintenanceKcal)} '
                   '(${_methodText(t.method)}) · since ${t.effectiveFrom}',
                   style: theme.textTheme.bodySmall,
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  "See the Today tab for today's calories and macros.",
                 ),
               ],
             );
@@ -261,12 +284,75 @@ int ageOn(DateTime birthDate, DateTime now) {
   return age;
 }
 
+/// Keeps digits and one decimal point; a typed '-', letter, or other
+/// character is rejected outright (matches [WeightInputFormatter] in the
+/// weight feature), rather than only erroring on save.
+class _NonNegativeDecimalFormatter extends TextInputFormatter {
+  const _NonNegativeDecimalFormatter();
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    final text = newValue.text.replaceAll(',', '.');
+    final valid = RegExp(r'^\d{0,3}(\.\d{0,2})?$').hasMatch(text);
+    if (!valid) return oldValue;
+    return newValue.copyWith(text: text);
+  }
+}
+
 /// Profile & goal settings, saved to the single Profiles row (id = 1).
 ///
 /// Also used by the first-run setup: [extra] widgets (e.g. a weigh-in field)
 /// go inside the same [Form] above the save button, so their validators run
 /// with the profile's, and [onSaved] runs after the profile is stored instead
 /// of the default "Profile saved" snackbar.
+/// Formats birth-date entry as `MM/DD/YYYY` by inserting the `/` separators
+/// as digits are typed, so only the 8 digits need to be typed.
+class _DateSlashFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    // Count digits before the cursor in the raw edited text (reflecting
+    // whatever insertion/deletion just happened), not just the final length,
+    // so editing a digit in the middle of the field re-places the cursor
+    // after that same digit instead of always snapping to the end.
+    final cursor = newValue.selection.end.clamp(0, newValue.text.length);
+    var digitsBeforeCursor = 0;
+    for (var i = 0; i < cursor; i++) {
+      if (_isDigit(newValue.text[i])) digitsBeforeCursor++;
+    }
+
+    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final capped = digits.length > 8 ? digits.substring(0, 8) : digits;
+    if (digitsBeforeCursor > capped.length) {
+      digitsBeforeCursor = capped.length;
+    }
+
+    final buffer = StringBuffer();
+    for (var i = 0; i < capped.length; i++) {
+      if (i == 2 || i == 4) buffer.write('/');
+      buffer.write(capped[i]);
+    }
+    final text = buffer.toString();
+
+    var offset = digitsBeforeCursor;
+    if (digitsBeforeCursor > 2) offset++;
+    if (digitsBeforeCursor > 4) offset++;
+    offset = offset.clamp(0, text.length);
+
+    return TextEditingValue(text: text, selection: TextSelection.collapsed(offset: offset));
+  }
+
+  bool _isDigit(String ch) {
+    final code = ch.codeUnitAt(0);
+    return code >= 0x30 && code <= 0x39;
+  }
+}
+
 class ProfileForm extends ConsumerStatefulWidget {
   const ProfileForm({
     super.key,
@@ -344,16 +430,64 @@ class _ProfileFormState extends ConsumerState<ProfileForm> {
 
   Future<void> _pickBirthDate() async {
     final now = ref.read(clockProvider)();
-    final picked = await showDatePicker(
+    final firstDate = DateTime(now.year - 100);
+    final lastDate = DateTime(now.year - 13, now.month, now.day);
+    final controller = TextEditingController(
+      text: _birthDate == null ? '' : _formatMmDdYyyy(_birthDate!),
+    );
+    String? errorText;
+    final picked = await showDialog<DateTime>(
       context: context,
-      initialDate: _birthDate ?? DateTime(now.year - 30, now.month, now.day),
-      firstDate: DateTime(now.year - 100),
-      lastDate: DateTime(now.year - 13, now.month, now.day),
-      initialEntryMode: DatePickerEntryMode.input,
-      helpText: 'Birth date',
-      fieldHintText: 'MM/DD/YYYY',
-      errorFormatText: 'Type it like 09/25/1996',
-      errorInvalidText: 'Pick a date at least 13 years ago',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Birth date'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            // Auto-inserts the `/` separators, so typing the 8 digits is
+            // all that's needed.
+            inputFormatters: [_DateSlashFormatter()],
+            decoration: InputDecoration(
+              hintText: 'MM/DD/YYYY',
+              errorText: errorText,
+            ),
+            onSubmitted: (_) => Navigator.of(ctx).pop(
+              _parseMmDdYyyy(controller.text),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                final parsed = _parseMmDdYyyy(controller.text);
+                if (parsed == null) {
+                  setDialogState(
+                    () => errorText = 'Type it like 09/25/1996',
+                  );
+                  return;
+                }
+                // Covers both edges: too recent (under 13) and too old
+                // (over 100), rather than always blaming the 13-years-ago
+                // bound.
+                if (parsed.isBefore(firstDate) || parsed.isAfter(lastDate)) {
+                  setDialogState(
+                    () => errorText =
+                        'Enter a date between ${firstDate.year} and '
+                        '${lastDate.year}',
+                  );
+                  return;
+                }
+                Navigator.of(ctx).pop(parsed);
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      ),
     );
     if (picked != null) {
       setState(() {
@@ -361,6 +495,27 @@ class _ProfileFormState extends ConsumerState<ProfileForm> {
         _birthError = null;
       });
     }
+  }
+
+  static String _formatMmDdYyyy(DateTime d) =>
+      '${d.month.toString().padLeft(2, '0')}/'
+      '${d.day.toString().padLeft(2, '0')}/'
+      '${d.year.toString().padLeft(4, '0')}';
+
+  static DateTime? _parseMmDdYyyy(String s) {
+    final match = RegExp(r'^(\d{2})/(\d{2})/(\d{4})$').firstMatch(s.trim());
+    if (match == null) return null;
+    final month = int.parse(match.group(1)!);
+    final day = int.parse(match.group(2)!);
+    final year = int.parse(match.group(3)!);
+    if (month < 1 || month > 12) return null;
+    final date = DateTime(year, month, day);
+    // DateTime rolls an invalid day (e.g. day 30 in February) into the
+    // next month instead of throwing, so catch that here.
+    if (date.month != month || date.day != day || date.year != year) {
+      return null;
+    }
+    return date;
   }
 
   bool get _hasExistingProfile => ref.read(profileProvider).value != null;
@@ -614,6 +769,7 @@ class _ProfileFormState extends ConsumerState<ProfileForm> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
+              inputFormatters: const [_NonNegativeDecimalFormatter()],
               textInputAction: TextInputAction.next,
               validator: _range('height', 100, 250),
             ),
@@ -691,6 +847,7 @@ class _ProfileFormState extends ConsumerState<ProfileForm> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
+              inputFormatters: const [_NonNegativeDecimalFormatter()],
               textInputAction: widget.extra.isEmpty
                   ? TextInputAction.done
                   : TextInputAction.next,
@@ -860,7 +1017,7 @@ class _ExportDataTileState extends ConsumerState<ExportDataTile> {
   Widget build(BuildContext context) => ListTile(
     leading: const Icon(Icons.ios_share),
     title: const Text('Export data'),
-    subtitle: const Text('All your data as a JSON file'),
+    subtitle: const Text('Save a backup of all your data'),
     trailing: _busy
         ? const SizedBox.square(
             dimension: 20,
@@ -868,5 +1025,40 @@ class _ExportDataTileState extends ConsumerState<ExportDataTile> {
           )
         : null,
     onTap: _busy ? null : _export,
+  );
+}
+
+/// Restores a backup made with [ExportDataTile], replacing all data.
+class ImportDataTile extends ConsumerStatefulWidget {
+  const ImportDataTile({super.key});
+
+  @override
+  ConsumerState<ImportDataTile> createState() => _ImportDataTileState();
+}
+
+class _ImportDataTileState extends ConsumerState<ImportDataTile> {
+  bool _busy = false;
+
+  Future<void> _import() async {
+    setState(() => _busy = true);
+    try {
+      await runImport(context, ref);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    leading: const Icon(Icons.restore),
+    title: const Text('Import data'),
+    subtitle: const Text('Restore a backup; replaces everything here'),
+    trailing: _busy
+        ? const SizedBox.square(
+            dimension: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          )
+        : null,
+    onTap: _busy ? null : _import,
   );
 }

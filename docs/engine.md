@@ -4,8 +4,8 @@ Pure Dart in `lib/features/targets/engine/`. No Flutter or DB imports. All numbe
 
 ## Inputs
 - Profile: sex, age (from birthDate at `today`), heightCm, activityLevel, goalWeightKg,
-  weeklyRatePct (0.25–1.0, % of body weight per week, before the body-fat cap in §4),
-  proteinPerKg (1.6–2.2), checkInWeekday.
+  goalDirection (lose/gain), weeklyRatePct (0.25% up to a body-fat-dependent cap — see §4 — which
+  is at most 1.0% when losing or 0.5% when gaining), proteinPerKg (1.6–2.2), checkInWeekday.
 - Weigh-ins: `Map<dayKey, kg>`. Trend via `computeTrend()` (`lib/domain/trend.dart`, EMA alpha 0.1).
 - Intake per day with a `fullyLogged` flag. Only fully-logged days count.
 - Previous accepted target (may be null): its maintenance, and — decoded from its stored
@@ -74,8 +74,14 @@ yesterday, there's no measurement yet ("still settling in after a diet change").
 Treats the measured maintenance as a slowly drifting value, updated with a 1-variable Kalman
 filter instead of trusting each week's raw reading outright:
 - Prior: the previous smoothed measured value, with its variance increased by a process-noise term
-  (SD 50 kcal, i.e. +2,500 kcal² — how much the true maintenance is expected to drift on its own
-  between check-ins).
+  (SD 50 kcal, i.e. +2,500 kcal² per week — how much the true maintenance is expected to drift on
+  its own between check-ins), scaled by the number of weeks actually elapsed since the previous
+  target's `effectiveFrom` (`weeksSincePrevious`, rounded, minimum 1, capped at 12 weeks) rather
+  than always assuming exactly one week. Check-ins can be skipped for arbitrarily long stretches
+  (`checkInDue` stays true until the user acts — §6), and without this scaling a prior built from
+  regular weekly check-ins stayed almost as confident after a 10-week gap as after a 1-week one,
+  so a fresh, clean measurement was underweighted relative to a now-stale prior. No previous
+  target (the first recommendation) counts as 1 week, the original assumption.
 - Measurement: this week's rawMeasured, with the variance from §2 (so a noisy week counts less).
 - `K = priorVar / (priorVar + measVar)`; `smoothed = prior + K × (rawMeasured − prior)`.
 - The very first measurement (no prior) is taken as-is. A week with no fresh measurement carries
@@ -95,14 +101,29 @@ blended otherwise.
 If a previous target exists, limit the change of *this final maintenance* to ±150 kcal per weekly
 update — kept as a hard guardrail on top of the Kalman smoothing in §3, not instead of it.
 
-Weekly rate is capped by estimated body fat before it becomes a deficit: up to 1.0%/week at
-BMI ≥ 30 or fat ≥ 30%, up to 0.75% at BMI ≥ 25 or fat ≥ 20%, else 0.5% — faster loss costs more
-lean mass the less fat there is to lose.
-- If trend weight ≤ goalWeightKg: target = maintenance (maintenance mode).
-- Else deficit = effectiveRatePct/100 × trendKg × kcalPerKg / 7, capped at 25% of maintenance and
-  750 kcal (lowered from 1000 — beyond that, lean-mass loss starts showing up under a lifting
-  program).
-- target = maintenance − deficit.
+Weekly rate is capped by estimated body fat before it becomes a deficit or surplus, and the cap
+direction is opposite between the two goals:
+- **Losing** (`goalDirection == lose`): up to 1.0%/week at BMI ≥ 30 or fat ≥ 30%, up to 0.75% at
+  BMI ≥ 25 or fat ≥ 20%, else 0.5% (`maxWeeklyRatePct`) — faster loss costs more lean mass the
+  less fat there is to lose, so a higher body fat gets a *higher* ceiling.
+- **Gaining** (`goalDirection == gain`): up to 0.5%/week at fat ≤ 15%, 0.375% at fat ≤ 25%, else
+  0.25% (`maxWeeklyGainRatePct`) — a leaner person gets more surplus headroom for muscle
+  building, so a *lower* body fat gets a *higher* ceiling. Modest surpluses build about as much
+  muscle as large ones (Garthe 2013; Iraki 2019; Slater 2019), so the cap stays conservative even
+  at the lean end.
+- Either way, the effective rate is `min(profile's chosen rate, this cap)`; the UI slider itself
+  only lets the user choose up to the cap.
+
+Maintenance mode: trend weight is already past the goal in the goal's direction — `trendKg ≤
+goalWeightKg` when losing, `trendKg ≥ goalWeightKg` when gaining. target = maintenance.
+
+Otherwise:
+- Losing: deficit = effectiveRatePct/100 × trendKg × kcalPerKg / 7, capped at 25% of maintenance
+  and 750 kcal (lowered from 1000 — beyond that, lean-mass loss starts showing up under a lifting
+  program). target = maintenance − deficit.
+- Gaining: surplus = effectiveRatePct/100 × trendKg × kcalPerKg / 7, capped at 25% of maintenance
+  and 500 kcal (`kMaxSurplusKcal` — a flat, lower cap than the loss side's, since large surpluses
+  mostly add fat rather than muscle). target = maintenance + surplus.
 - In both modes the target is floored at max(BMR × 1.0, male ? 1500 : 1200). The floor used to
   apply only below goal weight; it now applies in maintenance mode too, as a safety measure — a
   maintenance estimate dragged down by under-logging must not produce an implausibly low target

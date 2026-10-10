@@ -2,6 +2,8 @@ import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:nutrition_app/app/providers.dart';
 import 'package:nutrition_app/core/app_features.dart';
 import 'package:nutrition_app/data/db/database.dart';
@@ -10,6 +12,7 @@ import 'package:nutrition_app/features/activity/widgets/health_connect_tile.dart
 import 'package:nutrition_app/features/activity/widgets/step_goal_tile.dart';
 import 'package:nutrition_app/features/activity/widgets/walk_reminder_tile.dart';
 import 'package:nutrition_app/features/settings/data_export.dart';
+import 'package:nutrition_app/features/settings/report_problem_tile.dart';
 import 'package:nutrition_app/features/settings/settings_screen.dart';
 
 import '../../helpers/test_db.dart';
@@ -123,7 +126,9 @@ void main() {
       2470,
     ); // matches engine_test.dart's formula-only case
 
-    expect(find.text('2,470 kcal'), findsOneWidget);
+    // The kcal/macro breakdown itself lives on the Today tab; Settings
+    // shows only how the current target came to be.
+    expect(find.textContaining('Maintenance about'), findsOneWidget);
     expect(find.text('Profile saved'), findsOneWidget);
     // With a profile, targets come first again.
     expect(
@@ -407,6 +412,81 @@ void main() {
     await settle(tester);
   });
 
+  testWidgets('typing birth date digits only auto-inserts the slashes', (
+    tester,
+  ) async {
+    tallScreen(tester);
+    final db = openTestDatabase();
+    addTearDown(db.close);
+    await tester.pumpWidget(app(db));
+    await settle(tester);
+
+    await tester.tap(find.byKey(const Key('birthDate')));
+    await tester.pumpAndSettle();
+    final field = find.descendant(
+      of: find.byType(Dialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(field, '09251996');
+    expect(
+      (tester.widget(field) as TextField).controller!.text,
+      '09/25/1996',
+    );
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sep 25, 1996 · 30 years old'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox());
+    await settle(tester);
+  });
+
+  testWidgets('editing a middle digit of the birth date keeps the cursor '
+      'near the edit instead of jumping to the end', (tester) async {
+    tallScreen(tester);
+    final db = openTestDatabase();
+    addTearDown(db.close);
+    await tester.pumpWidget(app(db));
+    await settle(tester);
+
+    await tester.tap(find.byKey(const Key('birthDate')));
+    await tester.pumpAndSettle();
+    final field = find.descendant(
+      of: find.byType(Dialog),
+      matching: find.byType(TextField),
+    );
+    await tester.enterText(field, '09251996');
+    expect(
+      (tester.widget(field) as TextField).controller!.text,
+      '09/25/1996',
+    );
+
+    // Regression: the old formatter ignored the edit position and always
+    // collapsed the cursor to the end, so correcting a typo in the middle
+    // (e.g. day "25" should have been "05") left the cursor stranded at the
+    // end instead of where the user was editing.
+    await tester.showKeyboard(field);
+    // Replaces the '2' at index 3 with '0': "09/25/1996" -> "09/05/1996",
+    // as the platform would report it, with the cursor right after the
+    // digit that was just typed.
+    tester.testTextInput.updateEditingValue(
+      const TextEditingValue(
+        text: '09/05/1996',
+        selection: TextSelection.collapsed(offset: 4),
+      ),
+    );
+    await tester.pump();
+
+    final updated = tester.widget(field) as TextField;
+    expect(updated.controller!.text, '09/05/1996');
+    expect(
+      updated.controller!.selection,
+      const TextSelection.collapsed(offset: 4),
+    );
+
+    await tester.pumpWidget(const SizedBox());
+    await settle(tester);
+  });
+
   testWidgets('picking Gain weight saves goalDirection as gain', (
     tester,
   ) async {
@@ -455,6 +535,35 @@ void main() {
     expect(ageOn(DateTime(1996, 12, 1), DateTime(2026, 9, 25)), 29);
   });
 
+  testWidgets(
+    'a birth date too far in the past names both bounds, not just the '
+    '13-years-ago one',
+    (tester) async {
+      tallScreen(tester);
+      final db = openTestDatabase();
+      addTearDown(db.close);
+      await tester.pumpWidget(app(db));
+      await settle(tester);
+
+      await tester.tap(find.byKey(const Key('birthDate')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.descendant(
+          of: find.byType(Dialog),
+          matching: find.byType(TextField),
+        ),
+        // now is 2026-09-25: firstDate is 1926, so this is a year too old.
+        '09/25/1925',
+      );
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      expect(find.text('Enter a date between 1926 and 2013'), findsOneWidget);
+
+      await tester.pumpWidget(const SizedBox());
+      await settle(tester);
+    },
+  );
+
   testWidgets('invalid form is not saved', (tester) async {
     tallScreen(tester);
     final db = openTestDatabase();
@@ -467,6 +576,39 @@ void main() {
     await settle(tester);
     expect(find.text('Enter your height'), findsOneWidget);
     expect(await tester.runAsync(() => db.select(db.profiles).get()), isEmpty);
+    await tester.pumpWidget(const SizedBox());
+    await settle(tester);
+  });
+
+  testWidgets('height and goal weight reject letters and a minus sign', (
+    tester,
+  ) async {
+    tallScreen(tester);
+    final db = openTestDatabase();
+    addTearDown(db.close);
+    await tester.pumpWidget(app(db));
+    await settle(tester);
+
+    await tester.enterText(find.byKey(const Key('heightCm')), '180');
+    await tester.enterText(find.byKey(const Key('heightCm')), '-abc180');
+    await tester.pump();
+    expect(
+      (tester.widget(find.byKey(const Key('heightCm'))) as TextFormField)
+          .controller!
+          .text,
+      '180',
+    );
+
+    await tester.enterText(find.byKey(const Key('goalWeightKg')), '80');
+    await tester.enterText(find.byKey(const Key('goalWeightKg')), '-abc80');
+    await tester.pump();
+    expect(
+      (tester.widget(find.byKey(const Key('goalWeightKg'))) as TextFormField)
+          .controller!
+          .text,
+      '80',
+    );
+
     await tester.pumpWidget(const SizedBox());
     await settle(tester);
   });
@@ -496,7 +638,9 @@ void main() {
     });
   });
 
-  testWidgets('web hides the Android-only settings', (tester) async {
+  testWidgets('web hides the Android-only settings but keeps backups', (
+    tester,
+  ) async {
     tallScreen(tester);
     final db = openTestDatabase();
     addTearDown(db.close);
@@ -519,7 +663,9 @@ void main() {
     expect(find.byType(HealthConnectSettingsTile), findsNothing);
     expect(find.byType(StepGoalSettingsTile), findsNothing);
     expect(find.byType(WalkReminderSettingsTile), findsNothing);
-    expect(find.byType(ExportDataTile), findsNothing);
+    // Backups work on web too: an iPhone friend's data lives only there.
+    expect(find.byType(ExportDataTile), findsOneWidget);
+    expect(find.byType(ImportDataTile), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
@@ -539,6 +685,175 @@ void main() {
     expect(find.byType(StepGoalSettingsTile), findsOneWidget);
     expect(find.byType(WalkReminderSettingsTile), findsOneWidget);
     expect(find.byType(ExportDataTile), findsOneWidget);
+    expect(find.byType(ImportDataTile), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('shows the app version at the bottom', (tester) async {
+    tallScreen(tester);
+    final db = openTestDatabase();
+    addTearDown(db.close);
+    await tester.runAsync(() => seedProfile(db));
+
+    await tester.pumpWidget(app(db));
+    await settle(tester);
+
+    // Tests don't pass --dart-define=APP_VERSION.
+    expect(find.text('Version Development build'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the backup rows are left out when switched off', (tester) async {
+    tallScreen(tester);
+    final db = openTestDatabase();
+    addTearDown(db.close);
+    await tester.runAsync(() => seedProfile(db));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          clockProvider.overrideWithValue(() => now),
+          featureEnabledProvider.overrideWith(
+            (ref, f) => f != AppFeature.backup,
+          ),
+        ],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await settle(tester);
+
+    expect(find.byKey(const Key('profileForm')), findsOneWidget);
+    expect(find.byType(ExportDataTile), findsNothing);
+    expect(find.byType(ImportDataTile), findsNothing);
+    expect(find.text('Your data'), findsNothing);
+    // Android-only rows stay, since only the backup gate is off here.
+    expect(find.byType(HealthConnectSettingsTile), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('sending a report closes the dialog on success', (tester) async {
+    tallScreen(tester);
+    final db = openTestDatabase();
+    addTearDown(db.close);
+    await tester.runAsync(() => seedProfile(db));
+    http.BaseRequest? sent;
+    final client = MockClient((request) async {
+      sent = request;
+      return http.Response('', 200);
+    });
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          clockProvider.overrideWithValue(() => now),
+          reportProblemClientProvider.overrideWithValue(client),
+          reportRelayUrlProvider.overrideWithValue(
+            'https://relay.example/report',
+          ),
+        ],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await settle(tester);
+
+    expect(find.byType(ReportProblemTile), findsOneWidget);
+    await tester.tap(find.byType(ReportProblemTile));
+    await tester.pumpAndSettle();
+    expect(find.byType(AlertDialog), findsOneWidget);
+
+    // Nothing typed: validated locally, no request sent.
+    await tester.tap(find.byKey(const Key('reportProblemSend')));
+    await tester.pump();
+    expect(find.text('Describe what went wrong first.'), findsOneWidget);
+    expect(sent, isNull);
+
+    await tester.enterText(
+      find.byKey(const Key('reportProblemDescription')),
+      'The app crashed on save',
+    );
+    await tester.tap(find.byKey(const Key('reportProblemSend')));
+    await settle(tester);
+    await tester.pumpAndSettle();
+
+    expect(sent, isNotNull);
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text('Thanks — your report was sent.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('a failed send keeps the dialog open with an error', (
+    tester,
+  ) async {
+    tallScreen(tester);
+    final db = openTestDatabase();
+    addTearDown(db.close);
+    await tester.runAsync(() => seedProfile(db));
+    final client = MockClient((request) async => http.Response('', 500));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          clockProvider.overrideWithValue(() => now),
+          reportProblemClientProvider.overrideWithValue(client),
+          reportRelayUrlProvider.overrideWithValue(
+            'https://relay.example/report',
+          ),
+        ],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await settle(tester);
+
+    await tester.tap(find.byType(ReportProblemTile));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('reportProblemDescription')),
+      'The app crashed on save',
+    );
+    await tester.tap(find.byKey(const Key('reportProblemSend')));
+    await settle(tester);
+
+    expect(find.byType(AlertDialog), findsOneWidget);
+    expect(
+      find.text("Couldn't send that. Check your connection and try again."),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('the report-a-problem row is left out when switched off', (
+    tester,
+  ) async {
+    tallScreen(tester);
+    final db = openTestDatabase();
+    addTearDown(db.close);
+    await tester.runAsync(() => seedProfile(db));
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          clockProvider.overrideWithValue(() => now),
+          featureEnabledProvider.overrideWith(
+            (ref, f) => f != AppFeature.reportProblem,
+          ),
+        ],
+        child: const MaterialApp(home: SettingsScreen()),
+      ),
+    );
+    await settle(tester);
+
+    expect(find.byKey(const Key('profileForm')), findsOneWidget);
+    expect(find.byType(ReportProblemTile), findsNothing);
+    // Everything else, including the version footer, is unaffected.
+    expect(find.byType(ExportDataTile), findsOneWidget);
+    expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });
 

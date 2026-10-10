@@ -45,6 +45,17 @@ void main() {
     await db.close();
   }
 
+  /// Makes the file look like a v2 install: current schema, then [downgrade]
+  /// applied, with user_version set back to 2.
+  Future<void> makeV2(Future<void> Function(AppDatabase db) downgrade) async {
+    final db = open();
+    await db.customSelect('SELECT 1').get(); // opens and creates tables
+    await downgrade(db);
+    await dropLifting(db);
+    await db.customStatement('PRAGMA user_version = 2');
+    await db.close();
+  }
+
   test('v1 install without manual_exercises gets the table', () async {
     await makeV1((db) => db.customStatement('DROP TABLE manual_exercises'));
 
@@ -144,5 +155,47 @@ void main() {
       'lift_entries_exercise_idx',
       'lift_sets_entry_idx',
     ]));
+  });
+
+  test('v2 install without goal_direction gets the column, defaulting to lose', () async {
+    await makeV2(
+      (db) => db.customStatement('ALTER TABLE profiles DROP COLUMN goal_direction'),
+    );
+
+    final db = open();
+    addTearDown(db.close);
+    // Before the fix this would throw "no such column: goal_direction" as
+    // soon as anything touched the profiles table.
+    await db
+        .into(db.profiles)
+        .insert(
+          ProfilesCompanion.insert(
+            id: const Value(1),
+            sex: 0,
+            birthDate: DateTime(1996, 9, 25),
+            heightCm: 180,
+            activityLevel: 2,
+            goalWeightKg: 75,
+            updatedAt: DateTime(2026, 9, 25),
+          ),
+        );
+    final inserted = await db.select(db.profiles).getSingle();
+    expect(inserted.goalDirection, 0); // lose, the documented default
+  });
+
+  test('bumping schemaVersion needs a migration step and an import upgrade', () {
+    // This number changed? A schema change needs all of:
+    //  1. A migration step in AppDatabase.migration (lib/data/db/database.dart)
+    //     — existing installs get it applied to their on-device file.
+    //  2. A matching step in _upgrade (lib/features/settings/data_import.dart)
+    //     — the same transform, so a backup made before this change still
+    //     imports (it never goes through the migrator).
+    //  3. A test exercising the upgrade from every earlier schema version
+    //     (here, and in test/features/settings/data_import_test.dart).
+    // Bump this assertion once all three are done, so the diff doesn't slip
+    // through unnoticed.
+    final db = open();
+    addTearDown(db.close);
+    expect(db.schemaVersion, 4);
   });
 }
